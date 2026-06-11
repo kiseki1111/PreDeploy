@@ -1,8 +1,11 @@
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
+import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import { readLocalConfig } from '../utils/config.js';
 import { hasUncommittedChanges, fetchRemote, getBehindCommitsCount } from '../utils/git.js';
+
+const execPromise = promisify(exec);
 
 // ANSI coloring helpers
 const green = (text) => `\x1b[32m${text}\x1b[0m`;
@@ -64,6 +67,64 @@ async function parseLocalEnv() {
   }
 }
 
+async function isDockerRunning() {
+  try {
+    await execPromise('docker info');
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function ensureDockerRunning() {
+  const running = await isDockerRunning();
+  if (running) return true;
+
+  console.log(yellow('Docker Engine belum aktif. Mencoba mengaktifkan Docker Desktop secara otomatis...'));
+
+  if (process.platform === 'win32') {
+    const defaultPath = 'C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe';
+    try {
+      await fs.access(defaultPath);
+      const child = spawn(defaultPath, [], { detached: true, stdio: 'ignore' });
+      child.unref();
+    } catch (_) {
+      console.log(red('❌ Gagal mengaktifkan secara otomatis: Executable Docker Desktop tidak ditemukan di:'));
+      console.log(`   ${defaultPath}`);
+      console.log(yellow('Silakan buka aplikasi Docker Desktop secara manual terlebih dahulu.'));
+      return false;
+    }
+  } else if (process.platform === 'darwin') {
+    try {
+      await execPromise('open -a "Docker"');
+    } catch (_) {
+      return false;
+    }
+  } else {
+    try {
+      await execPromise('sudo systemctl start docker');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  const maxAttempts = 30; // 60 seconds
+  console.log('Menunggu Docker Engine aktif (maksimal 60 detik)...');
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    process.stdout.write('.');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    if (await isDockerRunning()) {
+      process.stdout.write('\n');
+      console.log(green('✔ Docker Engine berhasil diaktifkan!\n'));
+      return true;
+    }
+  }
+  process.stdout.write('\n');
+  console.log(red('❌ Docker Engine tidak kunjung aktif setelah 60 detik.'));
+  console.log(yellow('Silakan periksa Docker Desktop Anda secara manual.'));
+  return false;
+}
+
 export async function upCommand(options = {}) {
   console.log(bold(cyan('\n--- Memulai Container Lokal ---\n')));
 
@@ -76,6 +137,10 @@ export async function upCommand(options = {}) {
     console.log(yellow('Silakan jalankan "cld init" terlebih dahulu untuk mengaturnya.'));
     return;
   }
+
+  // 1b. Ensure Docker is running
+  const dockerOk = await ensureDockerRunning();
+  if (!dockerOk) return;
 
   // 2. Git Commit & Sync Verification
   console.log('Memverifikasi status Git repositori...');
