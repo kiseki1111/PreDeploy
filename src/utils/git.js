@@ -82,3 +82,46 @@ export function parseGitRepository(url) {
   
   return cleaned;
 }
+
+/**
+ * Checks if there are any uncommitted changes (modified, untracked, staged).
+ */
+export async function hasUncommittedChanges() {
+  try {
+    const { stdout } = await execPromise('git status --porcelain');
+    return stdout.trim().length > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Fetches latest commits from remote origin.
+ */
+export async function fetchRemote() {
+  try {
+    await execPromise('git fetch origin');
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Gets the number of commits the local branch is behind the remote upstream.
+ */
+export async function getBehindCommitsCount() {
+  try {
+    // Check if there is an upstream branch configured
+    const { stdout: upstream } = await execPromise('git rev-parse --abbrev-ref @{u}');
+    if (!upstream.trim()) return 0;
+
+    const { stdout } = await execPromise('git log HEAD..@{u} --oneline');
+    const lines = stdout.trim().split('\n').filter(Boolean);
+    return lines.length;
+  } catch (error) {
+    // Return 0 if no upstream or failed to parse
+    return 0;
+  }
+}
+

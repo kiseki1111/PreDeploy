@@ -2,7 +2,7 @@ import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
 import { readLocalConfig } from '../utils/config.js';
-import { getApplication, getApplicationEnvs } from '../utils/api.js';
+import { hasUncommittedChanges, fetchRemote, getBehindCommitsCount } from '../utils/git.js';
 
 // ANSI coloring helpers
 const green = (text) => `\x1b[32m${text}\x1b[0m`;
@@ -16,7 +16,7 @@ const cyan = (text) => `\x1b[36m${text}\x1b[0m`;
  */
 function runCommand(command, args) {
   return new Promise((resolve, reject) => {
-    console.log(cyan(`Executing: ${command} ${args.join(' ')}`));
+    console.log(cyan(`Menjalankan: ${command} ${args.join(' ')}`));
     const child = spawn(command, args, { stdio: 'inherit', shell: true });
 
     child.on('close', (code) => {
@@ -69,97 +69,50 @@ export async function upCommand(options = {}) {
 
   // 1. Read local config
   const localConfig = await readLocalConfig();
-  const { appUuid, name, offline, portsExposes, buildArgs: offlineBuildArgs } = localConfig;
+  const { name, portsExposes } = localConfig;
 
-  if (!appUuid) {
-    console.log(red('Error: Repository ini belum diikat ke aplikasi Coolify manapun.'));
-    console.log(yellow('Silakan jalankan "cld init" terlebih dahulu untuk menghubungkannya.'));
+  if (!name) {
+    console.log(red('Error: Folder ini belum diinisialisasi.'));
+    console.log(yellow('Silakan jalankan "cld init" terlebih dahulu untuk mengaturnya.'));
     return;
   }
 
-  // 2. Check if .env exists
+  // 2. Git Commit & Sync Verification
+  console.log('Memverifikasi status Git repositori...');
+  
+  // A. Check for uncommitted changes
+  const uncommitted = await hasUncommittedChanges();
+  if (uncommitted) {
+    console.log(yellow('⚠ Peringatan: Terdapat perubahan lokal yang belum dikomit di repositori Anda.'));
+  }
+
+  // B. Sync check with GitHub
+  console.log('Melakukan sinkronisasi dengan remote origin (GitHub)...');
+  const fetched = await fetchRemote();
+  if (!fetched) {
+    console.log(yellow('⚠ Gagal melakukan "git fetch". Memulai aplikasi tanpa pengecekan remote (offline).'));
+  } else {
+    const behindCount = await getBehindCommitsCount();
+    if (behindCount > 0) {
+      console.log(red(`\n❌ Error: Repositori lokal Anda tertinggal ${behindCount} komit dari GitHub.`));
+      console.log(yellow('Pastikan lokal Anda berada di commit terbaru untuk menjaga sinkronisasi.'));
+      console.log(bold('Silakan jalankan perintah "git pull" terlebih dahulu sebelum menjalankan aplikasi.\n'));
+      return;
+    }
+    console.log(green('✔ Git tersinkronisasi: lokal Anda berada di commit terbaru GitHub.\n'));
+  }
+
+  // 3. Check if .env exists
   const envPath = path.join(process.cwd(), '.env');
   try {
     await fs.access(envPath);
   } catch (err) {
     console.log(red('Error: File ".env" tidak ditemukan.'));
-    console.log(yellow('Silakan buat file ".env" atau jalankan "cld pull" terlebih dahulu.'));
+    console.log(yellow('Silakan buat file ".env" terlebih dahulu (bisa mengikuti instruksi dari "cld pull").'));
     return;
   }
 
-  // 3. Fetch latest application details or use offline configurations
-  let appInfo = {};
-  let buildArgs = [];
-
-  if (offline) {
-    console.log(bold(yellow('Mode Offline Aktif: Menggunakan konfigurasi lokal.')));
-    appInfo = {
-      ports_exposes: portsExposes || '3000',
-      build_pack: 'dockerfile'
-    };
-
-    // Gather build-time args from local .env
-    const localEnvs = await parseLocalEnv();
-    const keys = offlineBuildArgs || [];
-    for (const key of keys) {
-      if (localEnvs[key] !== undefined) {
-        buildArgs.push('--build-arg');
-        buildArgs.push(`${key}=${localEnvs[key]}`);
-      }
-    }
-  } else {
-    console.log('Mengambil konfigurasi build terbaru dari Coolify...');
-    try {
-      appInfo = await getApplication(appUuid);
-      const envs = await getApplicationEnvs(appUuid);
-      
-      const buildEnvs = envs.filter(e => e.is_buildtime);
-      for (const env of buildEnvs) {
-        const val = env.real_value !== undefined && env.real_value !== null ? env.real_value : env.value;
-        buildArgs.push('--build-arg');
-        buildArgs.push(`${env.key}=${val}`);
-      }
-    } catch (error) {
-      console.log(yellow(`⚠ Gagal terhubung ke API Coolify (${error.message}).`));
-      console.log('Menggunakan konfigurasi lokal yang ada...');
-      appInfo = { build_pack: 'dockerfile', ports_exposes: '3000' };
-    }
-  }
-
-  const buildPack = appInfo.build_pack ? appInfo.build_pack.toLowerCase() : 'dockerfile';
-
-  // 4. Handle Docker Compose build pack
-  if (buildPack === 'dockercompose') {
-    const composeFile = 'docker-compose.coolify.yml';
-    let hasCompose = false;
-    try {
-      await fs.access(path.join(process.cwd(), composeFile));
-      hasCompose = true;
-    } catch (_) {
-      try {
-        await fs.access(path.join(process.cwd(), 'docker-compose.yml'));
-        hasCompose = true;
-      } catch (_) {}
-    }
-
-    if (!hasCompose) {
-      console.log(red('Error: File docker-compose tidak ditemukan.'));
-      console.log(yellow('Silakan jalankan "cld pull" terlebih dahulu.'));
-      return;
-    }
-
-    const composeFileName = hasCompose ? (await fs.access(path.join(process.cwd(), composeFile)).then(() => composeFile).catch(() => 'docker-compose.yml')) : 'docker-compose.yml';
-    console.log(`Menjalankan Docker Compose (${composeFileName})...`);
-    
-    try {
-      await runCommand('docker', ['compose', '-f', composeFileName, 'up', '--build']);
-    } catch (error) {
-      console.log(red(`❌ Gagal menjalankan Docker Compose: ${error.message}`));
-    }
-    return;
-  }
-
-  // 5. Handle Dockerfile build pack
+  // 4. Handle Dockerfile detection
   let dockerfileToUse = 'Dockerfile';
   try {
     await fs.access(path.join(process.cwd(), 'Dockerfile.coolify'));
@@ -169,16 +122,31 @@ export async function upCommand(options = {}) {
       await fs.access(path.join(process.cwd(), 'Dockerfile'));
       dockerfileToUse = 'Dockerfile';
     } catch (_) {
-      console.log(red('Error: Tidak ditemukan file "Dockerfile" atau "Dockerfile.coolify".'));
-      console.log(yellow('Silakan buat Dockerfile di root proyek atau jalankan "cld pull" jika file Dockerfile dikonfigurasi di Coolify.'));
+      console.log(red('Error: Tidak ditemukan file "Dockerfile" di root proyek.'));
+      console.log(yellow('Pastikan Anda memiliki file "Dockerfile" untuk melakukan build lokal.'));
       return;
     }
   }
 
   console.log(`Menggunakan Dockerfile: ${bold(dockerfileToUse)}`);
 
-  const cleanUuid = appUuid.replace('offline-', '');
-  const tag = `coolify-local-${cleanUuid.slice(0, 8)}`;
+  // 5. Gather build-time args from .env
+  // Automatically pass variables with common build-time prefixes (VITE_, NEXT_PUBLIC_, etc.)
+  const buildArgs = [];
+  const localEnvs = await parseLocalEnv();
+  const buildtimePrefixes = ['VITE_', 'NEXT_PUBLIC_', 'NUXT_', 'REACT_APP_', 'PUBLIC_', 'PORT'];
+  
+  for (const [key, val] of Object.entries(localEnvs)) {
+    const isBuildTime = buildtimePrefixes.some(prefix => key.startsWith(prefix));
+    if (isBuildTime) {
+      buildArgs.push('--build-arg');
+      buildArgs.push(`${key}=${val}`);
+    }
+  }
+
+  const containerName = `cld-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  const tag = `coolify-local-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
   console.log(`Membangun Docker Image (${bold(tag)})...`);
 
   const buildParams = [
@@ -198,14 +166,12 @@ export async function upCommand(options = {}) {
   }
 
   // 6. Running the container
-  // Port mapping
-  const containerPort = appInfo.ports_exposes || '3000';
+  const containerPort = portsExposes || '3000';
   const hostPort = options.port || containerPort;
-  const containerName = `cld-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
   console.log(`Menjalankan Container...`);
-  console.log(`  - Container Name: ${cyan(containerName)}`);
-  console.log(`  - Port Mapping:   ${cyan(`http://localhost:${hostPort}`)} -> Inside: ${cyan(containerPort)}`);
+  console.log(`  - Nama Container: ${cyan(containerName)}`);
+  console.log(`  - Port Mapping:    ${cyan(`http://localhost:${hostPort}`)} -> Dalam Container: ${cyan(containerPort)}`);
   console.log(yellow('\nTekan Ctrl+C untuk menghentikan container.\n'));
 
   // Clean up any existing container with same name first
