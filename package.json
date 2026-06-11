@@ -1,0 +1,22 @@
+{
+  "name": "coolify-local-debugger",
+  "version": "1.0.0",
+  "description": "CLI tool to debug Coolify applications on localhost with the same configuration",
+  "type": "module",
+  "main": "bin/cld.js",
+  "bin": {
+    "cld": "./bin/cld.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "coolify",
+    "debug",
+    "docker",
+    "cli"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {}
+}
