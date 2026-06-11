@@ -27,6 +27,6 @@ export async function pullCommand() {
   console.log(`  3. Klik tombol ${bold('Developer view')} di kanan atas untuk menampilkan format teks raw.`);
   console.log(`  4. Salin (copy) semua variabel tersebut.`);
   console.log(`  5. Buat file bernama ${bold('.env')} di folder utama proyek lokal Anda.`);
-  console.log(`  6. Tempel (paste) variabel tersebut ke dalam file `.env` dan simpan.`);
+  console.log(`  6. Tempel (paste) variabel tersebut ke dalam file ${bold('.env')} dan simpan.`);
   console.log(green(`\n✔ Setelah file ${bold('.env')} dibuat, Anda dapat langsung menjalankan ${bold('cld up')}.`));
 }
