@@ -69,20 +69,65 @@ async function updateGitignore() {
   }
 }
 
+async function startOfflineMode(repoIdentifier, currentBranch) {
+  console.log(bold(yellow('\n--- Mode Offline (Mandiri) Aktif ---')));
+  console.log('Anda dapat mengonfigurasi proyek lokal tanpa memerlukan koneksi API Coolify.\n');
+
+  const defaultName = repoIdentifier ? repoIdentifier.split('/').pop() : 'app';
+  const appName = await ask(`Masukkan nama aplikasi (default: ${defaultName}): `) || defaultName;
+  const containerPort = await ask('Masukkan port kontainer yang diekspos aplikasi (default: 3000): ') || '3000';
+  const buildArgsStr = await ask('Masukkan nama variabel build-time (pisahkan dengan koma, contoh: VITE_API_URL,NEXT_PUBLIC_URL) atau kosongkan: ');
+  
+  const buildArgs = buildArgsStr 
+    ? buildArgsStr.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
+
+  await writeLocalConfig({
+    appUuid: `offline-${Math.random().toString(36).substring(2, 11)}`,
+    name: appName,
+    gitRepository: repoIdentifier || null,
+    gitBranch: currentBranch || 'main',
+    portsExposes: containerPort,
+    buildArgs: buildArgs,
+    offline: true
+  });
+
+  console.log(green(`\n✔ Konfigurasi proyek offline berhasil dibuat di ${bold('.coolify-local.json')}!`));
+  await updateGitignore();
+  console.log(green(`\nLangkah berikutnya:`));
+  console.log(`1. Buka dashboard Coolify Anda di browser.`);
+  console.log(`2. Salin semua variabel lingkungan dari menu "Developer View" di aplikasi Anda.`);
+  console.log(`3. Jalankan ${bold('cld pull')} untuk melihat panduan penyalinan atau buat file ${bold('.env')} sendiri dan tempel di sana.`);
+  console.log(`4. Jalankan ${bold('cld up')} untuk mem-build dan menjalankan container secara lokal.`);
+}
+
 export async function initCommand() {
   console.log(bold(cyan('\n--- Inisialisasi Coolify Local Debugger ---\n')));
+
+  // Check if force offline flag is passed
+  const isOfflineFlag = process.argv.includes('--offline') || process.argv.includes('-o');
 
   // 1. Check Git environment
   const remoteUrl = await getGitRemoteUrl();
   const currentBranch = await getGitBranch();
+  const repoIdentifier = parseGitRepository(remoteUrl);
 
-  if (!remoteUrl) {
-    console.log(red('Error: Folder ini bukan repository Git atau tidak memiliki remote origin.'));
-    console.log(yellow('Silakan jalankan "git init" dan tambahkan remote origin terlebih dahulu.'));
+  if (isOfflineFlag) {
+    await startOfflineMode(repoIdentifier, currentBranch);
     return;
   }
 
-  const repoIdentifier = parseGitRepository(remoteUrl);
+  if (!remoteUrl) {
+    console.log(yellow('Peringatan: Folder ini bukan repository Git atau tidak memiliki remote origin.'));
+    const confirmOffline = await ask('Apakah Anda ingin menggunakan Mode Offline/Mandiri? (y/n): ');
+    if (confirmOffline.toLowerCase() === 'y') {
+      await startOfflineMode(null, null);
+    } else {
+      console.log(red('Proses dibatalkan. Hubungkan ke repositori Git terlebih dahulu atau gunakan Mode Offline.'));
+    }
+    return;
+  }
+
   console.log(`Deteksi Git Lokal:`);
   console.log(`  - Repository: ${cyan(repoIdentifier)}`);
   console.log(`  - Branch Aktif: ${cyan(currentBranch || 'none')}\n`);
@@ -91,9 +136,17 @@ export async function initCommand() {
   let globalConfig = await readGlobalConfig();
   let { apiUrl, apiToken } = globalConfig;
 
+  let useOfflineFallback = false;
+
   if (!apiUrl || !apiToken) {
     console.log(yellow('Kredensial API Coolify belum dikonfigurasi.'));
+    const choice = await ask('Hubungkan ke API Coolify atau masuk ke Mode Offline? (pilih: api/offline, default api): ');
     
+    if (choice.toLowerCase() === 'offline') {
+      await startOfflineMode(repoIdentifier, currentBranch);
+      return;
+    }
+
     while (true) {
       apiUrl = await ask('Masukkan URL API Coolify (contoh: https://coolify.yourdomain.com): ');
       if (!apiUrl) {
@@ -104,10 +157,15 @@ export async function initCommand() {
         apiUrl = `https://${apiUrl}`;
       }
 
-      apiToken = await ask('Masukkan API Token Coolify: ');
+      apiToken = await ask('Masukkan API Token Coolify (atau ketik "offline" untuk batal dan masuk Mode Offline): ');
       if (!apiToken) {
         console.log(red('API Token tidak boleh kosong.'));
         continue;
+      }
+
+      if (apiToken.toLowerCase() === 'offline') {
+        useOfflineFallback = true;
+        break;
       }
 
       console.log('Memverifikasi koneksi ke Coolify...');
@@ -117,15 +175,30 @@ export async function initCommand() {
         break;
       } catch (err) {
         console.log(red(`❌ Gagal terhubung ke Coolify: ${err.message}`));
-        console.log(yellow('Silakan masukkan kembali kredensial Anda.\n'));
+        const retryChoice = await ask('Coba lagi, atau masuk ke Mode Offline? (retry/offline, default retry): ');
+        if (retryChoice.toLowerCase() === 'offline') {
+          useOfflineFallback = true;
+          break;
+        }
       }
+    }
+
+    if (useOfflineFallback) {
+      await startOfflineMode(repoIdentifier, currentBranch);
+      return;
     }
 
     // Save global config
     await writeGlobalConfig({ apiUrl, apiToken });
     console.log(green('✔ Kredensial global disimpan di folder home (~/.coolify-local-global.json).'));
   } else {
-    console.log(green(`✔ Menggunakan kredensial API Coolify yang sudah ada di: ${apiUrl}\n`));
+    console.log(green(`✔ Menggunakan kredensial API Coolify yang sudah ada di: ${apiUrl}`));
+    const switchOffline = await ask('Apakah Anda ingin beralih ke Mode Offline untuk proyek ini? (y/n, default n): ');
+    if (switchOffline.toLowerCase() === 'y') {
+      await startOfflineMode(repoIdentifier, currentBranch);
+      return;
+    }
+    console.log('');
   }
 
   // 3. Fetch applications list and find matches
@@ -134,12 +207,20 @@ export async function initCommand() {
   try {
     apps = await listApplications();
   } catch (error) {
-    console.log(red(`❌ Gagal mengambil daftar aplikasi: ${error.message}`));
+    console.log(red(`❌ Gagal mengambil daftar aplikasi dari API: ${error.message}`));
+    const goOffline = await ask('Apakah Anda ingin menggunakan Mode Offline/Mandiri sebagai cadangan? (y/n): ');
+    if (goOffline.toLowerCase() === 'y') {
+      await startOfflineMode(repoIdentifier, currentBranch);
+    }
     return;
   }
 
   if (!Array.isArray(apps) || apps.length === 0) {
     console.log(red('Tidak ditemukan aplikasi apapun di akun Coolify Anda.'));
+    const goOffline = await ask('Apakah Anda ingin menggunakan Mode Offline/Mandiri? (y/n): ');
+    if (goOffline.toLowerCase() === 'y') {
+      await startOfflineMode(repoIdentifier, currentBranch);
+    }
     return;
   }
 

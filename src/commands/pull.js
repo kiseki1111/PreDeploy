@@ -29,11 +29,24 @@ export async function pullCommand() {
 
   // 1. Read local config
   const localConfig = await readLocalConfig();
-  const { appUuid, name } = localConfig;
+  const { appUuid, name, offline } = localConfig;
 
   if (!appUuid) {
     console.log(red('Error: Repository ini belum diikat ke aplikasi Coolify manapun.'));
     console.log(yellow('Silakan jalankan "cld init" terlebih dahulu untuk menghubungkannya.'));
+    return;
+  }
+
+  if (offline) {
+    console.log(bold(yellow('Aplikasi ini terkonfigurasi dalam Mode Offline (Mandiri).')));
+    console.log('Untuk memuat variabel lingkungan dari Coolify, lakukan langkah-langkah manual berikut:\n');
+    console.log(`  1. Buka dashboard Coolify Anda di browser.`);
+    console.log(`  2. Masuk ke halaman aplikasi -> menu ${bold('Environment Variables')}.`);
+    console.log(`  3. Klik tombol ${bold('Developer View')} untuk menampilkan semua teks variabel.`);
+    console.log(`  4. Salin (copy) seluruh teks variabel tersebut.`);
+    console.log(`  5. Buat file baru bernama ${bold('.env')} di root folder proyek lokal ini.`);
+    console.log(`  6. Tempel (paste) teks tersebut ke dalam file ${bold('.env')} dan simpan.`);
+    console.log(green(`\n✔ Setelah file ${bold('.env')} selesai dibuat, silakan jalankan ${bold('cld up')} untuk memulai container lokal.`));
     return;
   }
 
