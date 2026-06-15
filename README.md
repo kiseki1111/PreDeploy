@@ -1,124 +1,104 @@
-# Coolify Local Debugger (cld) 🚀
+# PreDeploy 🚀
 
-**Coolify Local Debugger (`cld`)** adalah tool CLI (Command Line Interface) berbasis Node.js yang dirancang khusus untuk membantu para developer menjalankan dan mendebug aplikasi mereka di lingkungan lokal (`localhost`) dengan konfigurasi yang sama persis seperti di server Staging/Production Coolify.
+**PreDeploy** (sebelumnya Coolify Local Debugger) adalah tool CLI (*Command Line Interface*) agnostik berbasis Node.js yang dirancang untuk memastikan **"Zero-Crash Deployment"**. 
 
-Dengan `cld`, Anda tidak perlu lagi melakukan commit dan push ke GitHub secara terus-menerus hanya untuk memicu antrean build & deploy yang lama di server Coolify saat sedang mencari/memperbaiki bug (*debugging*).
+Alat ini membantu Anda memindai celah konfigurasi, mem-*backup* variabel lingkungan, mensimulasikan lingkungan *server* secara lokal, dan meng-generate skrip *CI/CD* secara otomatis, tidak peduli platform apa yang Anda gunakan untuk *hosting* (Vercel, Railway, VPS, VPS dengan Coolify, dll).
 
 ---
 
 ## 🌟 Fitur Utama
 
-- **Mode Offline (Mandiri)**: Dapat digunakan penuh walaupun API pada server Coolify Anda dinonaktifkan (seperti server kampus/kantor yang dikunci admin).
-- **Validasi Sinkronisasi Git Otomatis**:
-  - Mendeteksi jika terdapat perubahan file lokal yang belum di-commit (`git status`).
-  - Memeriksa komit terbaru di GitHub secara otomatis (`git fetch`). Jika versi lokal Anda tertinggal, proses build akan **dihentikan** untuk mencegah Anda men-debug kode yang tidak sinkron.
-- **Aktivasi Docker Desktop Otomatis**: Jika mesin Docker Anda dideteksi belum berjalan saat mengetik `cld up`, tool ini secara otomatis akan membuka aplikasi Docker Desktop dan menunggu hingga engine siap sebelum melanjutkan proses build.
-- **Auto-Inject Build-Args**: Mendeteksi secara cerdas variabel lingkungan di `.env` yang berawalan dengan prefix build-time umum (seperti `VITE_`, `NEXT_PUBLIC_`, `NUXT_`, `REACT_APP_`, dll.) dan menyuntikkannya sebagai `--build-arg` saat build Docker image.
-- **Zero Dependencies**: Sangat ringan, cepat di-install, dan hanya memanfaatkan API bawaan Node.js.
+- **Project Scanning & Gap Analysis (`pd doctor`)**: Memindai proyek Anda untuk mencari file konfigurasi penting (seperti `.env`, dependensi `package.json`, dan status migrasi database).
+- **Auto-Patching & Backup**: Otomatis membuat arsip *backup* file `.env` setiap kali menjalankan diagnostik, mencegah hilangnya kredensial.
+- **Action Required Notes**: Menghasilkan dokumen `PREDEPLOY-NOTES.md` berisi poin-poin krusial yang perlu Anda perbaiki secara manual sebelum melempar aplikasi ke server.
+- **Local Dry-Run Simulation (`pd up`)**: Menguji *build* dan *run* aplikasi di dalam *container* Docker lokal yang mereplikasi lingkungan *production Linux*.
+- **CI/CD Auto-Generation (`pd generate`)**: Membuatkan skrip GitHub Actions (`deploy.yml`) secara otomatis agar *deploy* selanjutnya bisa berjalan di latar belakang hanya dengan `git push`.
 
 ---
 
-## 📋 Prasyarat Sistem
+## 🛠 Instalasi
 
-Sebelum menggunakan tool ini, pastikan komputer Anda sudah terpasang:
-1. **Node.js** (Versi 18 ke atas)
-2. **Git**
-3. **Docker Desktop** (Pastikan terintegrasi dengan WSL jika Anda menggunakan Windows)
+### Prasyarat:
+- **Node.js** v16.0+ terinstal.
+- **Docker** terinstal dan berjalan (Hanya dibutuhkan untuk fitur Dry-Run `pd up`).
+- **Git** terinstal di sistem Anda.
 
----
+### Cara Menginstal:
+Saat ini, proyek diinstal secara global dari kode sumber lokal:
 
-## 🚀 Cara Instalasi (Untuk Pengguna Lain)
-
-Agar orang lain dapat menggunakan tool ini dari repositori GitHub Anda, ikuti instruksi berikut:
-
-1. **Clone Repositori ini ke komputer lokal:**
+1. Kloning repository ini ke direktori lokal (misal: di `~/tools/predeploy`):
    ```bash
-   git clone https://github.com/kiseki1111/Coolify-Local-Debugger.git
+   git clone https://github.com/kiseki1111/Coolify-Local-Debugger.git predeploy
    ```
-
-2. **Masuk ke folder repositori:**
+2. Masuk ke direktori:
    ```bash
-   cd Coolify-Local-Debugger
+   cd predeploy
    ```
-
-3. **Hubungkan CLI ke sistem secara global:**
+3. Install dependensi dan kaitkan ke sistem operasi secara global:
    ```bash
+   npm install
    npm link
    ```
-   *Catatan untuk pengguna Windows: Pastikan Anda membuka PowerShell/CMD dengan hak akses Administrator jika terjadi kendala izin.*
 
-Setelah proses di atas selesai, perintah **`cld`** sudah dapat dipanggil dari folder mana pun di terminal Anda.
+Setelah itu, perintah `pd` (singkatan dari PreDeploy) atau `predeploy` bisa digunakan dari mana saja!
 
 ---
 
-## 📖 Tutorial Cara Pemakaian Lengkap
+## 🚀 Cara Menggunakan PreDeploy
 
-### Langkah 1: Inisialisasi Proyek Lokal (`cld init`)
-Buka terminal dan masuk ke folder proyek aplikasi yang ingin Anda debug (folder kode proyek Anda yang terhubung ke GitHub dan di-deploy di Coolify), lalu jalankan:
+Buka terminal dan arahkan ke root *folder* proyek aplikasi Anda yang ingin di-deploy, lalu ikuti langkah-langkah ini:
 
+### 1. Inisialisasi Proyek
 ```bash
-cld init
+pd init
+```
+Perintah ini akan membuat file konfigurasi `.predeploy.json` dan otomatis menyembunyikan konfigurasi tersebut di `.gitignore`.
+
+### 2. Pindai Kesiapan Deploy (Doctor)
+```bash
+pd doctor
+```
+Alat ini akan mengecek:
+- Kesamaan isi `.env` vs `.env.example`.
+- Kelengkapan *script* di `package.json`.
+- Kesiapan direktori migrasi (Mendukung Prisma dan Laravel).
+
+Jika ditemukan masalah, PreDeploy otomatis membuat folder `.predeploy/` yang berisi arsip *backup* `.env`, file JSON diagnostik, dan file panduan `PREDEPLOY-NOTES.md`.
+
+### 3. Simulasi Dry-Run (Opsional tapi Direkomendasikan)
+```bash
+pd up
+# atau
+pd up -p 8080
+```
+Perintah ini membangun image Docker dari proyek Anda dan menjalankannya. Jika aplikasi berjalan lancar di sini, Anda bisa yakin 99% aplikasi tidak akan error saat di-*deploy* ke server asli.
+
+### 4. Buat Skrip CI/CD Otomatis
+```bash
+pd generate
+```
+PreDeploy akan membuatkan *pipeline* `deploy.yml` (contohnya GitHub Actions). Anda hanya perlu mengedit token rahasianya, melakukan commit, dan aplikasi Anda sudah otomatis ter-deploy ke *server* saat di-push ke GitHub!
+
+---
+
+## 📂 Struktur Direktori `.predeploy/`
+
+Ketika `pd doctor` mendeteksi anomali, folder ini akan terbuat otomatis di root proyek Anda:
+- `.predeploy/backup/` : Menyimpan arsip dari `.env` lokal berdasarkan tanggal.
+- `.predeploy/diagnostics/` : File log JSON detail seputar eksekusi sistem.
+- `PREDEPLOY-NOTES.md` : Panduan perbaikan manual.
+
+---
+
+## ⚙️ Menghapus PreDeploy (Unlink)
+
+Jika Anda ingin mencopot alias CLI ini:
+```bash
+# Kembali ke folder instalasi predeploy
+cd path/ke/folder/predeploy
+npm unlink
 ```
 
-Logika yang berjalan:
-1. Tool mendeteksi remote Git dan branch proyek Anda saat ini.
-2. Anda akan diminta memasukkan nama aplikasi (misal: `tugas-sig`).
-3. Anda akan diminta memasukkan **port kontainer tempat aplikasi Anda berjalan di dalam Docker** (misalnya port `80` untuk base image PHP-Apache, port `3000` untuk Next.js/React, atau port `8000` untuk Laravel).
-4. Tool membuat file konfigurasi `.coolify-local.json` lokal dan otomatis menambahkannya (beserta file `.env`) ke `.gitignore` Anda agar aman.
-
 ---
 
-### Langkah 2: Siapkan File Variabel Lingkungan (`.env`)
-Aplikasi Anda membutuhkan konfigurasi environment variable dari server.
-1. Jalankan perintah:
-   ```bash
-   cld pull
-   ```
-   *(Perintah ini akan menampilkan panduan menyalin variabel dari dashboard Coolify)*
-2. Buka dashboard Coolify Anda di browser, masuk ke halaman aplikasi Anda -> tab **Environment Variables**.
-3. Klik tombol **Developer view** di kanan atas untuk menampilkan teks mentah.
-4. Salin (copy) seluruh teks variabel tersebut.
-5. Buat file baru bernama **`.env`** di folder utama proyek lokal Anda, tempel (paste) variabel tersebut di dalamnya, lalu simpan.
-
-> [!TIP]
-> **Praktik Terbaik Database Lokal:**
-> Demi keamanan, jangan arahkan host database ke server Staging/Production asli. Buatlah database MySQL kosong di localhost Anda (misal via XAMPP/Laragon), import struktur/data di sana, lalu ubah variabel di file `.env` lokal Anda:
-> ```env
-> DB_HOST=host.docker.internal  # Agar kontainer Docker lokal bisa mengakses database di localhost laptop Anda
-> DB_USER=root
-> DB_PASS=password_mysql_lokal_anda
-> ```
-
----
-
-### Langkah 3: Bangun dan Jalankan Kontainer Lokal (`cld up`)
-Pastikan kode lokal Anda sudah rapi dan siap dijalankan, ketik perintah:
-
-```bash
-cld up
-```
-
-*   **Pengecekan Otomatis**: Tool akan memeriksa jika ada perubahan kode yang belum di-commit atau tertinggal dari GitHub, serta memastikan Docker aktif.
-*   **Kustomisasi Port**: Secara default, port localhost akan mengikuti port kontainer. Jika Anda ingin memetakan ke port lain di localhost (misalnya aplikasi di dalam Docker berjalan di port `80`, tetapi Anda ingin membukanya di browser pada `http://localhost:3000`), jalankan dengan opsi `-p`:
-    ```bash
-    cld up -p 3000
-    ```
-
-Setelah sukses, buka browser Anda di alamat yang ditunjukkan di terminal (misalnya `http://localhost:3000`) untuk mulai men-debug secara instan!
-
----
-
-## 🛠️ Pemecahan Masalah (Troubleshooting)
-
-#### 1. Error `ERR_EMPTY_RESPONSE` di Browser saat Membuka localhost
-- **Penyebab**: Terjadi ketidakcocokan port. Port aplikasi di dalam Docker berbeda dengan port yang didefinisikan saat `cld init`. (Misalnya base image PHP-Apache berjalan di port `80`, tetapi Anda mengonfigurasi port `3000`).
-- **Solusi**: Edit file `.coolify-local.json` Anda secara manual dan ubah nilai `"portsExposes"` menjadi port kontainer yang benar (misalnya `"portsExposes": "80"`), lalu jalankan kembali `cld up -p 3000`.
-
-#### 2. Perubahan Kode Lokal Tidak Muncul di Browser
-- **Penyebab**: Perubahan kode lokal belum di-build ulang ke dalam Docker Image.
-- **Solusi**: Tekan `Ctrl + C` di terminal untuk mematikan container, lalu jalankan `cld up` lagi untuk mem-build kode terbaru ke dalam container Docker.
-
----
-
-## 📄 Lisensi
-Proyek ini dilisensikan di bawah Lisensi ISC.
+*Diciptakan agar setiap developer bisa merasakan "Zero-Crash Deployment".*

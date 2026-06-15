@@ -3,6 +3,8 @@
 import { initCommand } from '../src/commands/init.js';
 import { pullCommand } from '../src/commands/pull.js';
 import { upCommand } from '../src/commands/up.js';
+import { doctorCommand } from '../src/commands/doctor.js';
+import { generateCommand } from '../src/commands/generate.js';
 
 // ANSI coloring helpers
 const green = (text) => `\x1b[32m${text}\x1b[0m`;
@@ -15,31 +17,29 @@ const version = '1.0.0';
 
 function printHelp() {
   console.log(`
-${bold(cyan('Coolify Local Debugger (cld) - v' + version))}
-Sikronkan konfigurasi aplikasi Coolify Anda untuk didebug secara lokal.
+${bold(cyan('PreDeploy - v' + version))}
+Agnostic CLI tool to scan, patch, and dry-run your applications for zero-crash deployments.
 
 ${bold('PENGGUNAAN:')}
-  ${green('cld')} <command> [opsi]
+  ${green('predeploy')} <command> [opsi]
+  ${green('pd')} <command> [opsi]
 
 ${bold('COMMANDS:')}
-  ${bold(green('init'))}         Mengikat repository git lokal saat ini dengan aplikasi Coolify.
-  ${bold(green('pull'))}         Menarik environment variables dan Dockerfile dari Coolify ke lokal (.env).
-  ${bold(green('up'))} | ${bold(green('run'))}    Membangun Docker image lokal dan menjalankan container aplikasi.
+  ${bold(green('doctor'))}       Memindai proyek untuk mencari celah konfigurasi & kesiapan deploy.
+  ${bold(green('init'))}         Menginisialisasi konfigurasi lokal (.predeploy.json).
+  ${bold(green('pull'))}         Menarik konfigurasi dari remote provider.
+  ${bold(green('up'))} | ${bold(green('run'))}    Membangun Docker image lokal dan menjalankan simulasi dry-run.
 
 ${bold('OPSI:')}
-  ${bold(green('-p, --port'))}    Menentukan host port lokal (default: port dari konfigurasi Coolify).
+  ${bold(green('-p, --port'))}    Menentukan host port lokal (default: terdeteksi otomatis).
   ${bold(green('-h, --help'))}    Menampilkan bantuan penggunaan ini.
-  ${bold(green('-v, --version'))} Menampilkan versi aplikasi cld.
+  ${bold(green('-v, --version'))} Menampilkan versi aplikasi.
 
 ${bold('CONTOH PENGGUNAAN:')}
-  1. Jalankan inisialisasi pertama kali:
-     $ ${cyan('cld init')}
-  2. Tarik variabel lingkungan & konfigurasi:
-     $ ${cyan('cld pull')}
-  3. Jalankan aplikasi di localhost:
-     $ ${cyan('cld up')}
-  4. Jalankan aplikasi dengan custom port:
-     $ ${cyan('cld up -p 8080')}
+  1. Periksa kesiapan proyek:
+     $ ${cyan('pd doctor')}
+  2. Jalankan simulasi lokal:
+     $ ${cyan('pd up')}
   `);
 }
 
@@ -53,11 +53,19 @@ async function main() {
   }
 
   if (args.includes('-v') || args.includes('--version')) {
-    console.log(`cld version ${version}`);
+    console.log(`predeploy version ${version}`);
     return;
   }
 
   switch (command.toLowerCase()) {
+    case 'doctor':
+      await doctorCommand();
+      break;
+
+    case 'generate':
+      await generateCommand();
+      break;
+
     case 'init':
       await initCommand();
       break;

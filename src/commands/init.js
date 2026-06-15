@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getGitRemoteUrl, getGitBranch, parseGitRepository } from '../utils/git.js';
 import { writeLocalConfig } from '../utils/config.js';
+import { detectPort } from '../utils/detect.js';
 
 // ANSI coloring helpers
 const green = (text) => `\x1b[32m${text}\x1b[0m`;
@@ -32,7 +33,7 @@ async function ask(query) {
  */
 async function updateGitignore() {
   const gitignorePath = path.join(process.cwd(), '.gitignore');
-  const filesToIgnore = ['.env', '.coolify-local.json', 'Dockerfile.coolify'];
+  const filesToIgnore = ['.env', '.predeploy.json', '.predeploy/'];
   
   try {
     let content = '';
@@ -46,14 +47,14 @@ async function updateGitignore() {
     const toAppend = [];
 
     for (const file of filesToIgnore) {
-      if (!lines.includes(file)) {
+      if (!lines.includes(file) && !lines.includes(file.replace('/', ''))) {
         toAppend.push(file);
       }
     }
 
     if (toAppend.length > 0) {
       const appendStr = (content.endsWith('\n') || content === '' ? '' : '\n') + 
-                        '\n# Coolify Local Debugger config\n' + 
+                        '\n# PreDeploy config & diagnostics\n' + 
                         toAppend.join('\n') + '\n';
       await fs.appendFile(gitignorePath, appendStr, 'utf-8');
       console.log(green(`✔ Menambahkan ${toAppend.join(', ')} ke .gitignore.`));
@@ -64,7 +65,7 @@ async function updateGitignore() {
 }
 
 export async function initCommand() {
-  console.log(bold(cyan('\n--- Inisialisasi Coolify Local Debugger ---\n')));
+  console.log(bold(cyan('\n--- Inisialisasi PreDeploy ---\n')));
 
   // 1. Check Git environment
   const remoteUrl = await getGitRemoteUrl();
@@ -84,7 +85,8 @@ export async function initCommand() {
   // 2. Setup project configuration (Always offline/local run configuration for now)
   const defaultName = repoIdentifier ? repoIdentifier.split('/').pop() : 'app';
   const appName = await ask(`Masukkan nama aplikasi lokal (default: ${defaultName}): `) || defaultName;
-  const containerPort = await ask('Masukkan port aplikasi yang diekspos (default: 3000): ') || '3000';
+  const detectedPort = await detectPort();
+  const containerPort = await ask(`Masukkan port aplikasi yang diekspos (default: ${detectedPort}): `) || detectedPort;
 
   await writeLocalConfig({
     name: appName,
@@ -94,12 +96,13 @@ export async function initCommand() {
     offline: true
   });
 
-  console.log(green(`\n✔ Konfigurasi proyek lokal berhasil disimpan di ${bold('.coolify-local.json')}!`));
+  console.log(green(`\n✔ Konfigurasi proyek lokal berhasil disimpan di ${bold('.predeploy.json')}!`));
   
   // 3. Update .gitignore
   await updateGitignore();
 
   console.log(green(`\nLangkah berikutnya:`));
-  console.log(`1. Buat file ${bold('.env')} di root proyek ini (salin variabel dari Coolify jika ada).`);
-  console.log(`2. Jalankan perintah ${bold('cld up')} untuk membangun & menjalankan aplikasi lokal.`);
+  console.log(`1. Buat file ${bold('.env')} di root proyek ini (salin variabel dari provider Anda jika ada).`);
+  console.log(`2. Jalankan perintah ${bold('pd doctor')} untuk memeriksa konfigurasi proyek.`);
+  console.log(`3. Jalankan perintah ${bold('pd up')} untuk membangun & menjalankan simulasi lokal.`);
 }

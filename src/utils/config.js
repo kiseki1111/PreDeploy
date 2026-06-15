@@ -2,8 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-const GLOBAL_CONFIG_FILE = path.join(os.homedir(), '.coolify-local-global.json');
-const LOCAL_CONFIG_FILE = path.join(process.cwd(), '.coolify-local.json');
+const GLOBAL_CONFIG_FILE = path.join(os.homedir(), '.predeploy-global.json');
+const LOCAL_CONFIG_FILE = path.join(process.cwd(), '.predeploy.json');
 
 /**
  * Reads global configuration.

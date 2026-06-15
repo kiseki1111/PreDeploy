@@ -1,20 +1,23 @@
 {
-  "name": "coolify-local-debugger",
+  "name": "predeploy",
   "version": "1.0.0",
-  "description": "CLI tool to debug Coolify applications on localhost with the same configuration",
+  "description": "Agnostic CLI tool to scan, patch, and dry-run your applications to ensure a zero-crash deployment on any platform.",
   "type": "module",
-  "main": "bin/cld.js",
+  "main": "bin/predeploy.js",
   "bin": {
-    "cld": "./bin/cld.js"
+    "predeploy": "./bin/predeploy.js",
+    "pd": "./bin/predeploy.js"
   },
   "scripts": {
     "test": "node --test"
   },
   "keywords": [
-    "coolify",
-    "debug",
+    "deploy",
+    "diagnostic",
     "docker",
-    "cli"
+    "cli",
+    "pre-flight",
+    "zero-crash"
   ],
   "author": "",
   "license": "ISC",
